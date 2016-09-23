@@ -97,3 +97,7 @@ Order doesn't matter (not that much, at least ;)
 * Yannick Brehon: contributor.
 
 * Glenn Matthews: bug reports, occasional bug fixes
+
+* Alexander Todorov: added new errro conditions to 'bad-super-call'.
+
+* Roy Williams (Lyft): added check for implementing __eq__ without implementing __hash__.
