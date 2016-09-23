@@ -1,0 +1,472 @@
+**************************
+  What's New In Pylint 2.0
+**************************
+
+:Release: |release|
+:Date: |TBD|
+
+
+Summary -- Release highlights
+=============================
+
+* None yet.
+
+
+New checkers
+============
+
+* We added a new check, ``literal-comparison``, which is used
+  whenever **pylint** can detect a comparison to a literal. This is usually
+  not what we want and, potentially, error prone. For instance, in the given example,
+  the first string comparison returns true, since smaller strings are interned
+  by the interpreter, while for larger ones, it will return False::
+
+       mystring = "ok"
+       if mystring is "ok": # Returns true
+           # do stuff
+
+       mystring = "a" * 1000
+       if mystring is ("a" * 1000): # This will return False
+           # do stuff
+
+  Instead of using the ``is`` operator, you should use the ``==`` operator for
+  this use case.
+
+
+* We added a new refactoring message, 'consider-merging-isinstance', which is
+  emitted whenever we can detect that consecutive *isinstance* calls can be merged
+  together.
+  For instance, in this example, we can merge the first two *isinstance* calls::
+
+      $ cat a.py
+      if isinstance(x, int) or isinstance(x, float):
+          pass
+      if isinstance(x, (int, float)) or isinstance(x, str):
+          pass
+      $ pylint a.py
+      R:  1, 0: Consider merging these isinstance calls to isinstance(x, (float, int)) (consider-merging-isinstance)
+      R:  3, 0: Consider merging these isinstance calls to isinstance(x, (int, float, str)) (consider-merging-isinstance)
+
+* A new error check was added, ``invalid-metaclass``, which is used whenever *pylint*
+  can detect that a given class is using a metaclass which is invalid for the purpose
+  of the class. This usually might indicate a problem in the code, rather than
+  something done on purpose.
+
+  .. code-block:: python
+
+       # Needs to inherit from *type* in order to be valid
+       class SomeClass(object):
+           ...
+
+       class MyClass(metaclass=SomeClass):
+           pass
+
+* A new warning was added, ``useless-super-delegation``, which is used whenever
+  we can detect that an overridden method is useless, relying on *super()* delegation
+  to do the same thing as another method from the MRO.
+
+  For instance, in this example, the first two methods are useless, since they
+  do the exact same thing as the methods from the base classes, while the next
+  two methods are not, since they do some extra operations with the passed
+  arguments.
+
+  .. code-block:: python
+
+      class Impl(Base):
+
+          def __init__(self, param1, param2):
+              super(Impl, self).__init__(param1, param2)
+     
+          def useless(self, first, second):
+              return super(Impl, self).useless(first, second)
+
+          def not_useless(self, first, **kwargs):
+              debug = kwargs.pop('debug', False)
+              if debug:
+                  ...
+              return super(Impl, self).not_useless(first, **kwargs)
+
+          def not_useless_1(self, first, *args):
+              return super(Impl, self).not_useless_1(first + some_value, *args)
+
+* We've added new error conditions for ``bad-super-call`` which now detect
+  the usage of ``super(type(self), self)`` and ``super(self.__class__, self)``
+  patterns. These can lead to recursion loop in derived classes. The problem
+  is visible only if you override a class that uses these incorrect invocations
+  of ``super()``.
+
+  For instance, ``Derived.__init__()`` will correctly call ``Base.__init__``.
+  At this point ``type(self)`` will be equal to ``Derived`` and the call again
+  goes to ``Base.__init__`` and we enter a recursion loop.
+
+  .. code-block:: python
+
+      class Base(object):
+          def __init__(self, param1, param2):
+              super(type(self), self).__init__(param1, param2)
+
+      class Derived(Base):
+          def __init__(self, param1, param2):
+              super(Derived, self).__init__(param1, param2)
+
+* The warnings ``missing-returns-doc`` and ``missing-yields-doc`` have each
+  been replaced with two new warnings - ``missing-[return|yield]-doc`` and
+  ``missing-[return|yield]-type-doc``. Having these as separate warnings
+  allows the user to choose whether their documentation style requires
+  text descriptions of function return/yield, specification of return/yield
+  types, or both.
+
+  .. code-block:: python
+
+      # This will raise missing-return-type-doc but not missing-return-doc
+      def my_sphinx_style_func(self):
+          """This is a Sphinx-style docstring.
+
+          :returns: Always False
+          """
+          return False
+
+      # This will raise missing-return-doc but not missing-return-type-doc
+      def my_google_style_func(self):
+          """This is a Google-style docstring.
+
+          Returns:
+              bool:
+          """
+          return False
+
+* A new refactoring check was added, ``redefined-argument-from-local``, which is
+  emitted when **pylint** can detect than a function argument is redefined locally
+  in some potential error prone cases. For instance, in the following piece of code,
+  we have a bug, since the check will never return ``True``, given the fact that we
+  are comparing the same object to its attributes.
+
+  .. code-block:: python
+
+      def test(resource):
+          for resource in resources:
+              # The ``for`` is reusing ``resource``, which means that the following
+              # ``resource`` is not what we wanted to check against.
+              if resource.resource_type == resource:
+                 call_resource(resource)
+
+  Other places where this check looks are *with* statement name bindings and
+  except handler's name binding.
+
+* A new Python 3 check was added, ``eq-without-hash``, which enforces classes that implement
+  ``__eq__`` *also* implement ``__hash__``.  The behavior around classes which implement ``__eq__``
+  but not ``__hash__`` changed in Python 3; in Python 2 such classes would get ``object.__hash__``
+  as their default implementation.  In Python 3, aforementioned classes get ``None`` as their
+  implementation thus making them unhashable.
+
+  .. code-block:: python
+
+      class JustEq(object):
+         def __init__(self, x):
+           self.x = x
+
+         def __eq__(self, other):
+           return self.x == other.x
+
+      class Neither(object):
+        def __init__(self, x):
+          self.x = x
+
+      class HashAndEq(object):
+         def __init__(self, x):
+           self.x = x
+
+         def __eq__(self, other):
+           return self.x == other.x
+
+         def __hash__(self):
+           return hash(self.x)
+
+      {Neither(1), Neither(2)}  # OK in Python 2 and Python 3
+      {HashAndEq(1), HashAndEq(2)}  # OK in Python 2 and Python 3
+      {JustEq(1), JustEq(2)}  # Works in Python 2, throws in Python 3
+
+
+  In general, this is a poor practice which motivated the behavior change.
+
+  .. code-block:: python
+
+      as_set = {JustEq(1), JustEq(2)}
+      print(JustEq(1) in as_set)  # prints False
+      print(JustEq(1) in list(as_set))  # prints True
+
+
+  In order to fix this error and avoid behavior differences between Python 2 and Python 3, classes
+  should either explicitly set ``__hash__`` to ``None`` or implement a hashing function.
+
+  .. code-block:: python
+
+      class JustEq(object):
+         def __init__(self, x):
+           self.x = x
+
+         def __eq__(self, other):
+           return self.x == other.x
+
+         __hash__ = None
+
+      {JustEq(1), JustEq(2)}  # Now throws an exception in both Python 2 and Python 3.
+
+Other Changes
+=============
+
+* ``arguments-differ`` check was rewritten to take in consideration
+   keyword only parameters and variadics.
+
+   Now it also complains about losing or adding capabilities to a method,
+   by introducing positional or keyword variadics. For instance, *pylint*
+   now complains about these cases::
+
+       class Parent(object):
+
+           def foo(self, first, second):
+               ...
+
+           def bar(self, **kwargs):
+               ...
+
+           def baz(self, *, first):
+               ...
+
+       class Child(Parent):
+
+           # Why subclassing in the first place?
+           def foo(self, *args, **kwargs):
+               # mutate args or kwargs.
+               super(Child, self).foo(*args, **kwargs)
+
+           def bar(self, first=None, second=None, **kwargs):
+               # The overridden method adds two new parameters,
+               # which can also be passed as positional arguments,
+               # breaking the contract of the parent's method.
+
+           def baz(self, first):
+               # Not keyword-only
+
+* ``redefined-outer-name`` is now also emitted when a
+  nested loop's target variable is the same as an outer loop.
+
+  .. code-block:: python
+
+      for i, j in [(1, 2), (3, 4)]:
+          for j in range(i):
+              print(j)
+
+* relax character limit for method and function names that starts with ``_``.
+  This will let people to use longer descriptive names for methods and
+  functions with a shorter scope (considered as private). The same idea
+  applies to variable names, only with an inverse rule: you want long
+  descriptive names for variables with bigger scope, like globals.
+
+* Add ``InvalidMessageError`` exception class and replace ``assert`` in
+  pylint.utils with ``raise InvalidMessageError``.
+
+* ``UnknownMessageError`` (formerly ``UnknownMessage``) and
+  ``EmptyReportError`` (formerly ``EmptyReport``) are now provided by the new
+  ``pylint.exceptions`` submodule instead of ``pylint.utils`` as before.
+
+* We now support inline comments for comma separated values in the configurations
+
+  For instance, you can now use the **#** sign for having comments inside
+  comma separated values, as seen below::
+
+      disable=no-member, # Don't care about it for now
+              bad-indentation, # No need for this
+              import-error
+
+  Of course, interweaving comments with values is also working::
+
+      disable=no-member,
+              # Don't care about it for now
+              bad-indentation # No need for this
+
+
+  This works by setting the `inline comment prefixes`_ accordingly.
+
+* Added epytext docstring support to the docparams extension.
+
+* We added support for providing hints when not finding a missing member.
+
+  For example, given the following code, it should be obvious that
+  the programmer intended to use the ``mail`` attribute, rather than
+  ``email``.
+
+  .. code-block:: python
+
+    class Contribution:
+        def __init__(self, name, email, date):
+            self.name = name
+            self.mail = mail
+            self.date = date
+
+    for c in contributions:
+        print(c.email) # Oups
+
+  **pylint** will now warn that there is a chance of having a typo,
+  suggesting new names that could be used instead.
+
+  .. code-block:: python
+
+    $ pylint a.py
+    E: 8,10: Instance of 'Contribution' has no 'email' member; maybe 'mail'?
+
+  The behaviour is controlled through the ``--missing-member-hint`` option.
+  Other options that come with this change are ``--missing-member-max-choices``
+  for choosing the total number of choices that should be picked in this
+  situation and ``--missing-member-hint-distance``, which specifies a metric
+  for computing the distance between the names (this is based on Levenshtein
+  distance, which means the lower the number, the more pickier the algorithm
+  will be).
+
+* ``PyLinter.should_analyze_file`` has a new parameter, ``is_argument``,
+  which specifies if the given path is a **pylint** argument or not.
+
+  ``should_analyze_file`` is called whenever **pylint** tries to determine
+  if a file should be analyzed, defaulting to files with the ``.py``
+  extension, but this function gets called only in the case where the said
+  file is not passed as a command line argument to **pylint**. This usually
+  means that pylint will analyze a file, even if that file has a different
+  extension, as long as the file was explicitly passed at command line.
+  Since ``should_analyze_file`` cannot be overridden to handle all the cases,
+  the check for the provenience of files was moved into ``should_analyze_file``.
+  This means we now can write something similar with this example, for ignoring
+  every file respecting the desired property, disregarding the provenience of the
+  file, being it a file passed as CLI argument or part of a package.
+
+  .. code-block:: python
+
+     from pylint.lint import Run, PyLinter
+
+     class CustomPyLinter(PyLinter):
+
+          def should_analyze_file(self, modname, path, is_argument=False):
+              if respect_condition(path):
+                  return False
+              return super().should_analyze_file(modname, path, is_argument=is_argument)
+
+
+     class CustomRun(Run):
+          LinterClass = CustomPyLinter
+
+     CustomRun(sys.argv[1:])
+
+
+Bug fixes
+=========
+
+* Fix a false positive of 'redundant-returns-doc', occurred when the documented
+  function was using *yield* instead of *return*.
+
+* Fix a false positive of 'missing-param-doc' and 'missing-type-doc',
+  occurred when a class docstring uses the 'For the parameters, see'
+  magic string but the class ``__init__`` docstring does not, or vice versa.
+
+* Added proper exception type inference for 'missing-raises-doc'. Now:
+
+  .. code-block:: python
+
+      def my_func():
+          """"My function."""
+          ex = ValueError('foo')
+          raise ex
+
+  will properly be flagged for missing documentation of
+  ``:raises ValueError:`` instead of ``:raises ex:``, among other scenarios.
+
+* Fix false positives of ``missing-[raises|params|type]-doc`` due to not
+  recognizing valid keyword synonyms supported by Sphinx.
+
+* More thorough validation in ``MessagesStore.register_messages()`` to detect
+  conflicts between a new message and any existing message id, symbol,
+  or ``old_names``.
+
+* We now support having plugins that shares the same name and with each one
+  providing options.
+
+  A plugin can be logically split into multiple classes, each class providing
+  certain capabilities, all of them being tied under the same name. But when
+  two or more such classes are also adding options, then **pylint** crashed,
+  since it already added the first encountered section. Now, these should
+  work as expected.
+
+  .. code-block:: python
+
+     from pylint.checkers import BaseChecker
+
+
+     class DummyPlugin1(BaseChecker):
+         name = 'dummy_plugin'
+         msgs = {'I9061': ('Dummy short desc 01', 'dummy-message-01', 'Dummy long desc')}
+         options = (
+             ('dummy_option_1', {
+                 'type': 'string',
+                 'metavar': '<string>',
+                 'help': 'Dummy option 1',
+             }),
+         )
+
+
+     class DummyPlugin2(BaseChecker):
+         name = 'dummy_plugin'
+         msgs = {'I9060': ('Dummy short desc 02', 'dummy-message-02', 'Dummy long desc')}
+         options = (
+             ('dummy_option_2', {
+                 'type': 'string',
+                 'metavar': '<string>',
+                 'help': 'Dummy option 2',
+             }),
+         )
+
+
+     def register(linter):
+         linter.register_checker(DummyPlugin1(linter))
+         linter.register_checker(DummyPlugin2(linter))
+
+
+
+Removed Changes
+===============
+
+* ``pylint-gui`` was removed, because it was deemed unfit for being included
+  in *pylint*. It had a couple of bugs and misfeatures, its usability was subpar
+  and since its development was neglected, we decided it is best to move on without it.
+
+
+* The HTML reporter was removed, including the ``--output-format=html`` option.
+  It was lately a second class citizen in Pylint, being mostly neglected.
+  Since we now have the JSON reporter, it can be used as a basis for building
+  more prettier HTML reports than what Pylint can currently generate. This is
+  part of the effort of removing cruft from Pylint, by removing less used
+  features.
+
+* The ``--files-output`` option was removed. While the same functionality cannot
+  be easily replicated, the JSON reporter, for instance, can be used as a basis
+  for generating the messages per each file.
+
+* ``--required-attributes`` option was removed.
+
+* ``--ignore-iface-methods`` option was removed.
+
+* The ``--optimize-ast`` flag was removed.
+
+  The option was initially added for handling pathological cases,
+  such as joining too many strings using the addition operator, which
+  was leading pylint to have a recursion error when trying to figure
+  out what the string was. Unfortunately, we decided to ignore the
+  issue, since the pathological case would have happen when the
+  code was parsed by Python as well, without actually reaching the
+  runtime step and as such, we decided to remove the error altogether.
+
+* ``epylint.py_run``'s *script* parameter was removed.
+
+  Now ``epylint.py_run`` is always using the underlying ``epylint.lint``
+  method from the current interpreter. This avoids some issues when multiple
+  instances of **pylint** are installed, which means that ``epylint.py_run``
+  might have ran a different ``epylint`` script than what was intended.
+
+.. _`inline comment prefixes`: https://docs.python.org/3/library/configparser.html#customizing-parser-behaviour
