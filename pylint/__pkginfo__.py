@@ -20,6 +20,8 @@ install_requires = [
     'six',
     'isort >= 4.2.5',
     'mccabe',
+    'configparser',
+    'backports.functools_lru_cache'
 ]
 
 extras_require = {}
