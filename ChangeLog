@@ -25,6 +25,9 @@ Release date: 2016-07-19
     * Added a new Python 3 warning for calling 'str.encode' or 'str.decode' with a non-text
       encoding.
 
+    * Added a new Python 3 check for accessing 'sys.maxint' which was removed in Python 3 in favor
+      of 'sys.maxsize'
+
 What's new in Pylint 1.6.3?
 ===========================
 
