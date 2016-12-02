@@ -30,6 +30,8 @@ Release date: 2016-07-19
 
     * Added a new Python 3 check for bad imports.
 
+    * Added a new Python 3 check for accessing deprecated string functions.
+
 
 What's new in Pylint 1.6.3?
 ===========================
